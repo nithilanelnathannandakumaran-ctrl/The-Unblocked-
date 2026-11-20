@@ -89,23 +89,50 @@ var ICONS={
  moon:'<path d="M20 14.5A8.5 8.5 0 0 1 9.5 4 9 9 0 1 0 20 14.5z"/>'
 };
 var apps=[],token=sessionStorage.getItem("ui_tok")||"";
+var CHUNK=700*1024, MAXSIZE=40*1024*1024;
 function esc(s){return String(s).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]})}
 function size(n){return n>1048576?(n/1048576).toFixed(1)+" MB":Math.max(1,Math.round(n/1024))+" KB"}
+function b64(buf){var u=new Uint8Array(buf),s="";for(var i=0;i<u.length;i+=32768)s+=String.fromCharCode.apply(null,u.subarray(i,i+32768));return btoa(s)}
 
 function render(){
  var q=document.getElementById("search").value.toLowerCase(),g=document.getElementById("grid"),h="";
  apps.filter(function(a){return (a.name+" "+a.desc).toLowerCase().indexOf(q)>-1}).forEach(function(a){
   h+='<div class="card"><h3>'+esc(a.name)+'</h3><p>'+esc(a.desc||"Portable app")+'</p><div class="meta">'+size(a.size)+' &middot; '+esc(a.file)+'</div>'
-   +'<div class="row"><a class="btn" href="/download/'+encodeURIComponent(a.id)+'">Download</a>'
+   +'<div class="row"><button class="btn" data-dl="'+esc(a.id)+'">Download</button>'
    +(token?'<button class="btn red" data-del="'+esc(a.id)+'">Delete</button>':'')+'</div></div>';
  });
  g.innerHTML=h||'<div class="empty">No apps here yet.</div>';
+ Array.prototype.forEach.call(g.querySelectorAll("[data-dl]"),function(b){
+  b.onclick=function(){var a=apps.find(function(x){return x.id===b.dataset.dl});if(a)download(a,b)};
+ });
  Array.prototype.forEach.call(g.querySelectorAll("[data-del]"),function(b){
   b.onclick=function(){ if(!confirm("Delete this app?"))return; call("DELETE","/api/admin/app/"+encodeURIComponent(b.dataset.del)).then(load); };
  });
  document.getElementById("admin").style.display=token?"block":"none";
  if(token)loadInbox();
 }
+
+async function download(a,btn){
+ if(btn.disabled)return;
+ btn.disabled=true;
+ var parts=[];
+ try{
+  for(var i=0;i<a.chunks;i++){
+   btn.textContent=Math.round(i/a.chunks*100)+"%";
+   var r=await fetch("/api/chunk/"+encodeURIComponent(a.id)+"/"+i);
+   if(!r.ok)throw new Error("fail");
+   var bin=atob(await r.text()),u=new Uint8Array(bin.length);
+   for(var j=0;j<bin.length;j++)u[j]=bin.charCodeAt(j);
+   parts.push(u);
+  }
+  var url=URL.createObjectURL(new Blob(parts)),l=document.createElement("a");
+  l.href=url;l.download=a.file;document.body.appendChild(l);l.click();l.remove();
+  setTimeout(function(){URL.revokeObjectURL(url)},5000);
+  btn.textContent="Download";
+ }catch(e){btn.textContent="Failed, retry"}
+ btn.disabled=false;
+}
+
 function loadInbox(){
  call("GET","/api/admin/messages").then(function(r){return r.ok?r.json():[]}).then(function(m){
   var h="";
@@ -163,17 +190,28 @@ function click(n){
 }
 
 document.getElementById("aout").onclick=function(){token="";sessionStorage.removeItem("ui_tok");render();};
-document.getElementById("aup").onclick=function(){
+document.getElementById("aup").onclick=async function(){
  var f=document.getElementById("afile").files[0],name=document.getElementById("aname").value.trim(),msg=document.getElementById("msg");
+ var btn=document.getElementById("aup");
  if(!f||!name){msg.textContent="Pick a file and give it a name.";return;}
- msg.textContent="Uploading...";
- call("PUT","/api/admin/upload",f,{
-  "x-name":encodeURIComponent(name),"x-desc":encodeURIComponent(document.getElementById("adesc").value.trim()),
-  "x-filename":encodeURIComponent(f.name),"Content-Type":"application/octet-stream"
- }).then(function(r){
-  if(r.ok){msg.textContent="Added.";document.getElementById("afile").value="";document.getElementById("aname").value="";document.getElementById("adesc").value="";load();}
-  else msg.textContent="Upload failed ("+r.status+").";
- }).catch(function(){msg.textContent="Upload failed.";});
+ if(f.size>MAXSIZE){msg.textContent="File too big (max 40 MB).";return;}
+ btn.disabled=true;
+ var id=Date.now().toString(36)+Math.random().toString(36).slice(2,8);
+ var total=Math.max(1,Math.ceil(f.size/CHUNK));
+ try{
+  for(var i=0;i<total;i++){
+   msg.textContent="Uploading "+Math.round(i/total*100)+"%...";
+   var buf=await f.slice(i*CHUNK,(i+1)*CHUNK).arrayBuffer();
+   var r=await call("PUT","/api/admin/chunk/"+id+"/"+i,b64(buf),{"Content-Type":"text/plain"});
+   if(!r.ok)throw new Error("chunk "+r.status);
+  }
+  var r2=await call("POST","/api/admin/finish",JSON.stringify({id:id,name:name,desc:document.getElementById("adesc").value.trim(),file:f.name,size:f.size}),{"Content-Type":"application/json"});
+  if(!r2.ok)throw new Error("finish "+r2.status);
+  msg.textContent="Added.";
+  document.getElementById("afile").value="";document.getElementById("aname").value="";document.getElementById("adesc").value="";
+  load();
+ }catch(e){msg.textContent="Upload failed ("+e.message+"). Try again."}
+ btn.disabled=false;
 };
 load();
 </script></body></html>
