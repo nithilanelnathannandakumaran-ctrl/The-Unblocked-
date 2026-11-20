@@ -6,6 +6,7 @@
 :root{--bg:#0d1117;--card:#161b22;--line:#262d38;--text:#e6edf3;--mute:#8b949e;--acc:#3ddc97}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--text);font:16px/1.5 system-ui,Segoe UI,Roboto,sans-serif;min-height:100vh;display:flex;flex-direction:column}
+body.locked{overflow:hidden}
 header{padding:56px 20px 28px;text-align:center}
 h1{margin:0;font-size:clamp(28px,6vw,48px);letter-spacing:-.02em}
 h1 span{color:var(--acc)}
@@ -21,22 +22,30 @@ main{flex:1;width:100%;max-width:960px;margin:0 auto;padding:12px 20px 40px}
 .btn.red{background:#ff6b6b;color:#2a0505}
 .btn.ghost{background:transparent;color:var(--text);border:1px solid var(--line)}
 .empty{color:var(--mute);text-align:center;padding:40px 0}
-#admin{display:none;background:var(--card);border:1px solid var(--acc);border-radius:12px;padding:16px;margin-bottom:22px}
-#admin h2{margin:0 0 10px;font-size:18px;color:var(--acc)}
-#admin input[type=text]{width:100%;padding:10px;margin-bottom:8px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--text)}
-#admin input[type=file]{margin:6px 0 10px;color:var(--mute);max-width:100%}
 .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+
+/* full-page admin */
+#admin{display:none;position:fixed;inset:0;z-index:100;background:var(--bg);overflow:auto}
+#admin .bar{position:sticky;top:0;background:var(--card);border-bottom:1px solid var(--acc);padding:14px 20px;display:flex;justify-content:space-between;align-items:center;z-index:2}
+#admin .bar h2{margin:0;font-size:20px;color:var(--acc)}
+#admin .wrap{max-width:900px;margin:0 auto;padding:24px 20px 60px;display:flex;flex-direction:column;gap:20px}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px}
+.panel h3{margin:0 0 12px;font-size:16px}
+.panel input[type=text]{width:100%;padding:10px;margin-bottom:8px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--text);font:inherit}
+.panel input[type=file]{margin:6px 0 10px;color:var(--mute);max-width:100%}
 #msg{color:var(--mute);font-size:13px;margin-top:8px}
+.arow{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 0;border-top:1px solid var(--line)}
+.arow:first-child{border-top:0}
+.arow b{display:block}
+.msgi{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px;margin-bottom:8px;font-size:14px}
+.msgi b{color:var(--acc)}
+.msgi .meta{margin:4px 0 6px}
+
 .ask{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin-top:28px}
 .ask h2{margin:0 0 4px;font-size:18px}
 .ask p{margin:0 0 12px;color:var(--mute);font-size:14px}
 .ask select,.ask textarea,.ask input{width:100%;padding:10px;margin-bottom:8px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--text);font:inherit}
 .ask textarea{min-height:90px;resize:vertical}
-#inbox{margin-top:16px;border-top:1px solid var(--line);padding-top:12px}
-#inbox h3{margin:0 0 8px;font-size:15px}
-.msgi{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px;margin-bottom:8px;font-size:14px}
-.msgi b{color:var(--acc)}
-.msgi .meta{margin:4px 0 6px}
 footer{border-top:1px solid var(--line);padding:22px 20px 30px;text-align:center;color:var(--mute);font-size:13px}
 #logos{display:flex;justify-content:center;gap:18px;margin-top:14px;flex-wrap:wrap}
 #logos button{background:none;border:0;padding:6px;cursor:pointer;opacity:.55;transition:opacity .15s,transform .1s;-webkit-tap-highlight-color:transparent}
@@ -44,23 +53,37 @@ footer{border-top:1px solid var(--line);padding:22px 20px 30px;text-align:center
 #logos button:active{transform:scale(.88)}
 #logos svg{width:26px;height:26px;fill:var(--mute)}
 </style></head><body>
+
+<div id="admin">
+  <div class="bar">
+    <h2>Admin</h2>
+    <button class="btn ghost" id="aout">Lock admin</button>
+  </div>
+  <div class="wrap">
+    <section class="panel">
+      <h3>Add a portable app</h3>
+      <input type="text" id="aname" placeholder="App name">
+      <input type="text" id="adesc" placeholder="Short description">
+      <input type="file" id="afile">
+      <div class="row"><button class="btn" id="aup">Upload app</button></div>
+      <div id="msg"></div>
+    </section>
+    <section class="panel">
+      <h3>Your apps</h3>
+      <div id="adminapps"></div>
+    </section>
+    <section class="panel">
+      <h3>Inbox</h3>
+      <div id="inboxlist"></div>
+    </section>
+  </div>
+</div>
+
 <header>
   <h1>The <span>Unblocked</span> Installer</h1>
   <p>Portable apps that run straight from a download. No install, no admin rights needed.</p>
 </header>
 <main>
-  <section id="admin">
-    <h2>Admin: add a portable app</h2>
-    <input type="text" id="aname" placeholder="App name">
-    <input type="text" id="adesc" placeholder="Short description">
-    <input type="file" id="afile">
-    <div class="row">
-      <button class="btn" id="aup">Upload app</button>
-      <button class="btn ghost" id="aout">Lock admin</button>
-    </div>
-    <div id="msg"></div>
-    <div id="inbox"><h3>Inbox</h3><div id="inboxlist"></div></div>
-  </section>
   <input id="search" placeholder="Search apps...">
   <div id="grid"></div>
   <section class="ask">
@@ -98,18 +121,30 @@ function render(){
  var q=document.getElementById("search").value.toLowerCase(),g=document.getElementById("grid"),h="";
  apps.filter(function(a){return (a.name+" "+a.desc).toLowerCase().indexOf(q)>-1}).forEach(function(a){
   h+='<div class="card"><h3>'+esc(a.name)+'</h3><p>'+esc(a.desc||"Portable app")+'</p><div class="meta">'+size(a.size)+' &middot; '+esc(a.file)+'</div>'
-   +'<div class="row"><button class="btn" data-dl="'+esc(a.id)+'">Download</button>'
-   +(token?'<button class="btn red" data-del="'+esc(a.id)+'">Delete</button>':'')+'</div></div>';
+   +'<div class="row"><button class="btn" data-dl="'+esc(a.id)+'">Download</button></div></div>';
  });
  g.innerHTML=h||'<div class="empty">No apps here yet.</div>';
  Array.prototype.forEach.call(g.querySelectorAll("[data-dl]"),function(b){
   b.onclick=function(){var a=apps.find(function(x){return x.id===b.dataset.dl});if(a)download(a,b)};
  });
- Array.prototype.forEach.call(g.querySelectorAll("[data-del]"),function(b){
-  b.onclick=function(){ if(!confirm("Delete this app?"))return; call("DELETE","/api/admin/app/"+encodeURIComponent(b.dataset.del)).then(load); };
- });
- document.getElementById("admin").style.display=token?"block":"none";
- if(token)loadInbox();
+
+ // admin full page
+ var open=!!token;
+ document.getElementById("admin").style.display=open?"block":"none";
+ document.body.classList.toggle("locked",open);
+ if(open){
+  var ah="";
+  apps.forEach(function(a){
+   ah+='<div class="arow"><div><b>'+esc(a.name)+'</b><span class="meta">'+size(a.size)+' &middot; '+esc(a.file)+'</span></div>'
+    +'<button class="btn red" data-del="'+esc(a.id)+'">Delete</button></div>';
+  });
+  var al=document.getElementById("adminapps");
+  al.innerHTML=ah||'<div class="meta">No apps yet. Upload one above.</div>';
+  Array.prototype.forEach.call(al.querySelectorAll("[data-del]"),function(b){
+   b.onclick=function(){ if(!confirm("Delete this app?"))return; call("DELETE","/api/admin/app/"+encodeURIComponent(b.dataset.del)).then(load); };
+  });
+  loadInbox();
+ }
 }
 
 async function download(a,btn){
@@ -184,7 +219,7 @@ function click(n){
   if(s.length<2)return;
   fetch("/api/unlock",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({seq:s})})
    .then(function(r){return r.ok?r.json():null}).then(function(d){
-    if(d&&d.token){token=d.token;sessionStorage.setItem("ui_tok",token);render();window.scrollTo({top:0,behavior:"smooth"});}
+    if(d&&d.token){token=d.token;sessionStorage.setItem("ui_tok",token);render();document.getElementById("admin").scrollTop=0;}
    });
  },1500);
 }
