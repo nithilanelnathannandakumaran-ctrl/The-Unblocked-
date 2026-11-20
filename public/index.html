@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>The Unblocked Installer</title>
+<style>
+:root{--bg:#0d1117;--card:#161b22;--line:#262d38;--text:#e6edf3;--mute:#8b949e;--acc:#3ddc97}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:16px/1.5 system-ui,Segoe UI,Roboto,sans-serif;min-height:100vh;display:flex;flex-direction:column}
+header{padding:56px 20px 28px;text-align:center}
+h1{margin:0;font-size:clamp(28px,6vw,48px);letter-spacing:-.02em}
+h1 span{color:var(--acc)}
+header p{color:var(--mute);margin:10px auto 0;max-width:520px}
+main{flex:1;width:100%;max-width:960px;margin:0 auto;padding:12px 20px 40px}
+#search{width:100%;padding:12px 14px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--text);font-size:16px;margin-bottom:18px}
+#grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:6px}
+.card h3{margin:0;font-size:18px}
+.card p{margin:0;color:var(--mute);font-size:14px;flex:1}
+.meta{font-size:12px;color:var(--mute)}
+.btn{display:inline-block;border:0;border-radius:8px;padding:9px 14px;background:var(--acc);color:#04210f;font-weight:600;cursor:pointer;text-decoration:none;font-size:14px;text-align:center}
+.btn.red{background:#ff6b6b;color:#2a0505}
+.btn.ghost{background:transparent;color:var(--text);border:1px solid var(--line)}
+.empty{color:var(--mute);text-align:center;padding:40px 0}
+#admin{display:none;background:var(--card);border:1px solid var(--acc);border-radius:12px;padding:16px;margin-bottom:22px}
+#admin h2{margin:0 0 10px;font-size:18px;color:var(--acc)}
+#admin input[type=text]{width:100%;padding:10px;margin-bottom:8px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--text)}
+#admin input[type=file]{margin:6px 0 10px;color:var(--mute);max-width:100%}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+#msg{color:var(--mute);font-size:13px;margin-top:8px}
+.ask{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin-top:28px}
+.ask h2{margin:0 0 4px;font-size:18px}
+.ask p{margin:0 0 12px;color:var(--mute);font-size:14px}
+.ask select,.ask textarea,.ask input{width:100%;padding:10px;margin-bottom:8px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--text);font:inherit}
+.ask textarea{min-height:90px;resize:vertical}
+#inbox{margin-top:16px;border-top:1px solid var(--line);padding-top:12px}
+#inbox h3{margin:0 0 8px;font-size:15px}
+.msgi{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px;margin-bottom:8px;font-size:14px}
+.msgi b{color:var(--acc)}
+.msgi .meta{margin:4px 0 6px}
+footer{border-top:1px solid var(--line);padding:22px 20px 30px;text-align:center;color:var(--mute);font-size:13px}
+#logos{display:flex;justify-content:center;gap:18px;margin-top:14px;flex-wrap:wrap}
+#logos button{background:none;border:0;padding:6px;cursor:pointer;opacity:.55;transition:opacity .15s,transform .1s;-webkit-tap-highlight-color:transparent}
+#logos button:hover{opacity:.9}
+#logos button:active{transform:scale(.88)}
+#logos svg{width:26px;height:26px;fill:var(--mute)}
+</style></head><body>
+<header>
+  <h1>The <span>Unblocked</span> Installer</h1>
+  <p>Portable apps that run straight from a download. No install, no admin rights needed.</p>
+</header>
+<main>
+  <section id="admin">
+    <h2>Admin: add a portable app</h2>
+    <input type="text" id="aname" placeholder="App name">
+    <input type="text" id="adesc" placeholder="Short description">
+    <input type="file" id="afile">
+    <div class="row">
+      <button class="btn" id="aup">Upload app</button>
+      <button class="btn ghost" id="aout">Lock admin</button>
+    </div>
+    <div id="msg"></div>
+    <div id="inbox"><h3>Inbox</h3><div id="inboxlist"></div></div>
+  </section>
+  <input id="search" placeholder="Search apps...">
+  <div id="grid"></div>
+  <section class="ask">
+    <h2>Want an app added, or got a question?</h2>
+    <p>Send it to the admin. Suggest a portable app to put in the App Data, or ask anything.</p>
+    <select id="qkind"><option value="request">Request an app</option><option value="question">Ask a question</option></select>
+    <textarea id="qtext" maxlength="500" placeholder="Type here..."></textarea>
+    <input id="qcontact" maxlength="100" placeholder="Name or contact (optional)">
+    <button class="btn" id="qsend">Send to admin</button>
+    <div id="qmsg" class="meta" style="margin-top:8px"></div>
+  </section>
+</main>
+<footer>
+  <div>&copy; The Unblocked Installer</div>
+  <div id="logos"></div>
+</footer>
+<script>
+var ICONS={
+ circle:'<circle cx="12" cy="12" r="9"/>',
+ triangle:'<path d="M12 3 22 21H2z"/>',
+ square:'<rect x="4" y="4" width="16" height="16" rx="2"/>',
+ star:'<path d="m12 2 3 7 7 .6-5.3 4.8 1.6 7.2L12 17.8 5.7 21.6l1.6-7.2L2 9.6 9 9z"/>',
+ hex:'<path d="M12 2 21 7v10l-9 5-9-5V7z"/>',
+ diamond:'<path d="M12 2 22 12 12 22 2 12z"/>',
+ cross:'<path d="M9 2h6v7h7v6h-7v7H9v-7H2V9h7z"/>',
+ moon:'<path d="M20 14.5A8.5 8.5 0 0 1 9.5 4 9 9 0 1 0 20 14.5z"/>'
+};
+var apps=[],token=sessionStorage.getItem("ui_tok")||"";
+function esc(s){return String(s).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]})}
+function size(n){return n>1048576?(n/1048576).toFixed(1)+" MB":Math.max(1,Math.round(n/1024))+" KB"}
+
+function render(){
+ var q=document.getElementById("search").value.toLowerCase(),g=document.getElementById("grid"),h="";
+ apps.filter(function(a){return (a.name+" "+a.desc).toLowerCase().indexOf(q)>-1}).forEach(function(a){
+  h+='<div class="card"><h3>'+esc(a.name)+'</h3><p>'+esc(a.desc||"Portable app")+'</p><div class="meta">'+size(a.size)+' &middot; '+esc(a.file)+'</div>'
+   +'<div class="row"><a class="btn" href="/download/'+encodeURIComponent(a.id)+'">Download</a>'
+   +(token?'<button class="btn red" data-del="'+esc(a.id)+'">Delete</button>':'')+'</div></div>';
+ });
+ g.innerHTML=h||'<div class="empty">No apps here yet.</div>';
+ Array.prototype.forEach.call(g.querySelectorAll("[data-del]"),function(b){
+  b.onclick=function(){ if(!confirm("Delete this app?"))return; call("DELETE","/api/admin/app/"+encodeURIComponent(b.dataset.del)).then(load); };
+ });
+ document.getElementById("admin").style.display=token?"block":"none";
+ if(token)loadInbox();
+}
+function loadInbox(){
+ call("GET","/api/admin/messages").then(function(r){return r.ok?r.json():[]}).then(function(m){
+  var h="";
+  m.forEach(function(x){
+   h+='<div class="msgi"><b>'+(x.kind==="request"?"App request":"Question")+'</b><div class="meta">'+new Date(x.created_at).toLocaleString()+(x.contact?" &middot; "+esc(x.contact):"")+'</div>'+esc(x.text)
+    +'<div style="margin-top:6px"><button class="btn red" data-m="'+x.id+'">Delete</button></div></div>';
+  });
+  var l=document.getElementById("inboxlist");
+  l.innerHTML=h||'<div class="meta">No messages yet.</div>';
+  Array.prototype.forEach.call(l.querySelectorAll("[data-m]"),function(b){
+   b.onclick=function(){call("DELETE","/api/admin/message/"+b.dataset.m).then(loadInbox)};
+  });
+ });
+}
+document.getElementById("qsend").onclick=function(){
+ var t=document.getElementById("qtext").value.trim(),q=document.getElementById("qmsg");
+ if(!t){q.textContent="Type something first.";return}
+ fetch("/api/message",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({
+  kind:document.getElementById("qkind").value,text:t,contact:document.getElementById("qcontact").value.trim()})})
+ .then(function(r){
+  if(r.ok){q.textContent="Sent! The admin will see it.";document.getElementById("qtext").value="";}
+  else q.textContent=r.status===429?"Too many messages, try again in a few minutes.":"Couldn't send.";
+ }).catch(function(){q.textContent="Couldn't send."});
+};
+function call(method,url,body,headers){
+ headers=headers||{}; if(token)headers["Authorization"]="Bearer "+token;
+ return fetch(url,{method:method,body:body,headers:headers}).then(function(r){
+  if(r.status===401){token="";sessionStorage.removeItem("ui_tok");render();}
+  return r;
+ });
+}
+function load(){ fetch("/api/apps").then(function(r){return r.json()}).then(function(d){apps=d;render();}); }
+document.getElementById("search").oninput=render;
+
+var names=Object.keys(ICONS).sort(function(){return Math.random()-.5});
+var lg=document.getElementById("logos");
+names.forEach(function(n){
+ var b=document.createElement("button");b.setAttribute("aria-label","logo");
+ b.innerHTML='<svg viewBox="0 0 24 24">'+ICONS[n]+'</svg>';
+ b.onclick=function(){click(n)};
+ lg.appendChild(b);
+});
+var seq=[],timer=null;
+function click(n){
+ seq.push(n); clearTimeout(timer);
+ if(seq.length>12)seq=[];
+ timer=setTimeout(function(){
+  var s=seq.slice();seq=[];
+  if(s.length<2)return;
+  fetch("/api/unlock",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({seq:s})})
+   .then(function(r){return r.ok?r.json():null}).then(function(d){
+    if(d&&d.token){token=d.token;sessionStorage.setItem("ui_tok",token);render();window.scrollTo({top:0,behavior:"smooth"});}
+   });
+ },1500);
+}
+
+document.getElementById("aout").onclick=function(){token="";sessionStorage.removeItem("ui_tok");render();};
+document.getElementById("aup").onclick=function(){
+ var f=document.getElementById("afile").files[0],name=document.getElementById("aname").value.trim(),msg=document.getElementById("msg");
+ if(!f||!name){msg.textContent="Pick a file and give it a name.";return;}
+ msg.textContent="Uploading...";
+ call("PUT","/api/admin/upload",f,{
+  "x-name":encodeURIComponent(name),"x-desc":encodeURIComponent(document.getElementById("adesc").value.trim()),
+  "x-filename":encodeURIComponent(f.name),"Content-Type":"application/octet-stream"
+ }).then(function(r){
+  if(r.ok){msg.textContent="Added.";document.getElementById("afile").value="";document.getElementById("aname").value="";document.getElementById("adesc").value="";load();}
+  else msg.textContent="Upload failed ("+r.status+").";
+ }).catch(function(){msg.textContent="Upload failed.";});
+};
+load();
+</script></body></html>
