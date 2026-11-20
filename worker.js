@@ -1,8 +1,9 @@
-const LOGOS = ["circle", "triangle", "square", "star", "hex", "diamond", "cross", "moon"];
+const ADMIN_PASSWORD = "ParmeetWontTellMeApp"; // put a password between the quotes to lock admin. Empty = anyone can open admin.
 
 const enc = new TextEncoder();
 const json = (o, s = 200) => new Response(JSON.stringify(o), { status: s, headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } });
 const ID_OK = /^[a-z0-9-]{8,40}$/;
+const sessionKey = env => env.SESSION_SECRET || (ADMIN_PASSWORD + "::unblocked-installer-v1");
 
 async function hmac(secret, msg) {
   const key = await crypto.subtle.importKey("raw", enc.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
@@ -17,14 +18,14 @@ function safeEq(a, b) {
 }
 async function makeToken(env) {
   const exp = Date.now() + 2 * 60 * 60 * 1000;
-  return exp + "." + (await hmac(env.SESSION_SECRET, "admin:" + exp));
+  return exp + "." + (await hmac(sessionKey(env), "admin:" + exp));
 }
 async function isAdmin(req, env) {
   const h = req.headers.get("Authorization") || "";
-  if (!h.startsWith("Bearer ") || !env.SESSION_SECRET) return false;
+  if (!h.startsWith("Bearer ")) return false;
   const [exp, sig] = h.slice(7).split(".");
   if (!exp || !sig || Number(exp) < Date.now()) return false;
-  return safeEq(sig, await hmac(env.SESSION_SECRET, "admin:" + exp));
+  return safeEq(sig, await hmac(sessionKey(env), "admin:" + exp));
 }
 
 export default {
@@ -64,18 +65,21 @@ export default {
     }
 
     if (req.method === "POST" && p === "/api/unlock") {
-      let body; try { body = await req.json(); } catch { return json({}, 400); }
-      const seq = Array.isArray(body.seq) ? body.seq.filter(x => LOGOS.includes(x)) : [];
-      const want = (env.ADMIN_SEQUENCE || "").split(",").map(s => s.trim()).filter(Boolean);
-      const ip = req.headers.get("CF-Connecting-IP") || "unknown";
-      const now = Date.now();
-      await env.DB.prepare("DELETE FROM login_attempts WHERE t < ?").bind(now - 600000).run();
-      const fails = await env.DB.prepare("SELECT COUNT(*) AS n FROM login_attempts WHERE ip = ?").bind(ip).first();
-      if (fails.n >= 5) return json({ ok: false }, 429);
-      await new Promise(r => setTimeout(r, 400));
-      if (!want.length || !env.SESSION_SECRET || !safeEq(seq.join(","), want.join(","))) {
-        await env.DB.prepare("INSERT INTO login_attempts (ip, t) VALUES (?, ?)").bind(ip, now).run();
-        return json({ ok: false }, 401);
+      let body = {}; try { body = await req.json(); } catch {}
+      if (ADMIN_PASSWORD) {
+        const ip = req.headers.get("CF-Connecting-IP") || "unknown";
+        const now = Date.now();
+        let blocked = false;
+        try {
+          await env.DB.prepare("DELETE FROM login_attempts WHERE t < ?").bind(now - 600000).run();
+          const fails = await env.DB.prepare("SELECT COUNT(*) AS n FROM login_attempts WHERE ip = ?").bind(ip).first();
+          if (fails.n >= 8) blocked = true;
+        } catch {}
+        if (blocked) return json({ ok: false }, 429);
+        if (!safeEq(String(body.pw || ""), ADMIN_PASSWORD)) {
+          try { await env.DB.prepare("INSERT INTO login_attempts (ip, t) VALUES (?, ?)").bind(ip, now).run(); } catch {}
+          return json({ ok: false }, 401);
+        }
       }
       return json({ ok: true, token: await makeToken(env) });
     }
