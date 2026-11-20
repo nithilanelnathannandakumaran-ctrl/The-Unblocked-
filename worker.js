@@ -1,151 +1,131 @@
-var ICONS={
- circle:'<circle cx="12" cy="12" r="9"/>',
- triangle:'<path d="M12 3 22 21H2z"/>',
- square:'<rect x="4" y="4" width="16" height="16" rx="2"/>',
- star:'<path d="m12 2 3 7 7 .6-5.3 4.8 1.6 7.2L12 17.8 5.7 21.6l1.6-7.2L2 9.6 9 9z"/>',
- hex:'<path d="M12 2 21 7v10l-9 5-9-5V7z"/>',
- diamond:'<path d="M12 2 22 12 12 22 2 12z"/>',
- cross:'<path d="M9 2h6v7h7v6h-7v7H9v-7H2V9h7z"/>',
- moon:'<path d="M20 14.5A8.5 8.5 0 0 1 9.5 4 9 9 0 1 0 20 14.5z"/>'
-};
-var apps=[],token=sessionStorage.getItem("ui_tok")||"";
-var CHUNK=700*1024, MAXSIZE=40*1024*1024;
-function esc(s){return String(s).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]})}
-function size(n){return n>1048576?(n/1048576).toFixed(1)+" MB":Math.max(1,Math.round(n/1024))+" KB"}
-function b64(buf){var u=new Uint8Array(buf),s="";for(var i=0;i<u.length;i+=32768)s+=String.fromCharCode.apply(null,u.subarray(i,i+32768));return btoa(s)}
+const LOGOS = ["circle", "triangle", "square", "star", "hex", "diamond", "cross", "moon"];
 
-function render(){
- var q=document.getElementById("search").value.toLowerCase(),g=document.getElementById("grid"),h="";
- apps.filter(function(a){return (a.name+" "+a.desc).toLowerCase().indexOf(q)>-1}).forEach(function(a){
-  h+='<div class="card"><h3>'+esc(a.name)+'</h3><p>'+esc(a.desc||"Portable app")+'</p><div class="meta">'+size(a.size)+' &middot; '+esc(a.file)+'</div>'
-   +'<div class="row"><button class="btn" data-dl="'+esc(a.id)+'">Download</button></div></div>';
- });
- g.innerHTML=h||'<div class="empty">No apps here yet.</div>';
- Array.prototype.forEach.call(g.querySelectorAll("[data-dl]"),function(b){
-  b.onclick=function(){var a=apps.find(function(x){return x.id===b.dataset.dl});if(a)download(a,b)};
- });
+const enc = new TextEncoder();
+const json = (o, s = 200) => new Response(JSON.stringify(o), { status: s, headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } });
+const ID_OK = /^[a-z0-9-]{8,40}$/;
 
- var open=!!token;
- document.getElementById("admin").style.display=open?"block":"none";
- document.body.classList.toggle("locked",open);
- if(open){
-  var ah="";
-  apps.forEach(function(a){
-   ah+='<div class="arow"><div><b>'+esc(a.name)+'</b><span class="meta">'+size(a.size)+' &middot; '+esc(a.file)+'</span></div>'
-    +'<button class="btn red" data-del="'+esc(a.id)+'">Delete</button></div>';
-  });
-  var al=document.getElementById("adminapps");
-  al.innerHTML=ah||'<div class="meta">No apps yet. Upload one above.</div>';
-  Array.prototype.forEach.call(al.querySelectorAll("[data-del]"),function(b){
-   b.onclick=function(){ if(!confirm("Delete this app?"))return; call("DELETE","/api/admin/app/"+encodeURIComponent(b.dataset.del)).then(load); };
-  });
-  loadInbox();
- }
+async function hmac(secret, msg) {
+  const key = await crypto.subtle.importKey("raw", enc.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const sig = await crypto.subtle.sign("HMAC", key, enc.encode(msg));
+  return [...new Uint8Array(sig)].map(b => b.toString(16).padStart(2, "0")).join("");
+}
+function safeEq(a, b) {
+  if (a.length !== b.length) return false;
+  let r = 0;
+  for (let i = 0; i < a.length; i++) r |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return r === 0;
+}
+async function makeToken(env) {
+  const exp = Date.now() + 2 * 60 * 60 * 1000;
+  return exp + "." + (await hmac(env.SESSION_SECRET, "admin:" + exp));
+}
+async function isAdmin(req, env) {
+  const h = req.headers.get("Authorization") || "";
+  if (!h.startsWith("Bearer ") || !env.SESSION_SECRET) return false;
+  const [exp, sig] = h.slice(7).split(".");
+  if (!exp || !sig || Number(exp) < Date.now()) return false;
+  return safeEq(sig, await hmac(env.SESSION_SECRET, "admin:" + exp));
 }
 
-async function download(a,btn){
- if(btn.disabled)return;
- btn.disabled=true;
- var parts=[];
- try{
-  for(var i=0;i<a.chunks;i++){
-   btn.textContent=Math.round(i/a.chunks*100)+"%";
-   var r=await fetch("/api/chunk/"+encodeURIComponent(a.id)+"/"+i);
-   if(!r.ok)throw new Error("fail");
-   var bin=atob(await r.text()),u=new Uint8Array(bin.length);
-   for(var j=0;j<bin.length;j++)u[j]=bin.charCodeAt(j);
-   parts.push(u);
+export default {
+  async fetch(req, env) {
+    const url = new URL(req.url);
+    const p = url.pathname;
+
+    if (req.method === "GET" && p === "/api/apps") {
+      const { results } = await env.DB.prepare(
+        "SELECT id, name, desc, file, size, created_at AS t, (SELECT COUNT(*) FROM chunks WHERE app_id = apps.id) AS chunks FROM apps ORDER BY created_at DESC"
+      ).all();
+      return json(results);
+    }
+
+    if (req.method === "GET" && p.startsWith("/api/chunk/")) {
+      const [id, nStr] = p.slice(11).split("/");
+      const n = Number(nStr);
+      if (!ID_OK.test(id || "") || !Number.isInteger(n) || n < 0) return new Response("bad", { status: 400 });
+      const row = await env.DB.prepare("SELECT data FROM chunks WHERE app_id = ? AND n = ?").bind(id, n).first();
+      if (!row) return new Response("Not found", { status: 404 });
+      if (n === 0) await env.DB.prepare("UPDATE apps SET downloads = downloads + 1 WHERE id = ?").bind(id).run();
+      return new Response(row.data, { headers: { "Content-Type": "text/plain", "Cache-Control": "no-store" } });
+    }
+
+    if (req.method === "POST" && p === "/api/message") {
+      let b; try { b = await req.json(); } catch { return json({}, 400); }
+      const text = String(b.text || "").trim().slice(0, 500);
+      const contact = String(b.contact || "").trim().slice(0, 100);
+      const kind = b.kind === "request" ? "request" : "question";
+      if (!text) return json({ error: "empty" }, 400);
+      const ip = req.headers.get("CF-Connecting-IP") || "unknown";
+      const now = Date.now();
+      const c = await env.DB.prepare("SELECT COUNT(*) AS n FROM messages WHERE ip = ? AND created_at > ?").bind(ip, now - 600000).first();
+      if (c.n >= 3) return json({ error: "slow down" }, 429);
+      await env.DB.prepare("INSERT INTO messages (kind, text, contact, ip, created_at) VALUES (?, ?, ?, ?, ?)").bind(kind, text, contact, ip, now).run();
+      return json({ ok: true });
+    }
+
+    if (req.method === "POST" && p === "/api/unlock") {
+      let body; try { body = await req.json(); } catch { return json({}, 400); }
+      const seq = Array.isArray(body.seq) ? body.seq.filter(x => LOGOS.includes(x)) : [];
+      const want = (env.ADMIN_SEQUENCE || "").split(",").map(s => s.trim()).filter(Boolean);
+      const ip = req.headers.get("CF-Connecting-IP") || "unknown";
+      const now = Date.now();
+      await env.DB.prepare("DELETE FROM login_attempts WHERE t < ?").bind(now - 600000).run();
+      const fails = await env.DB.prepare("SELECT COUNT(*) AS n FROM login_attempts WHERE ip = ?").bind(ip).first();
+      if (fails.n >= 5) return json({ ok: false }, 429);
+      await new Promise(r => setTimeout(r, 400));
+      if (!want.length || !env.SESSION_SECRET || !safeEq(seq.join(","), want.join(","))) {
+        await env.DB.prepare("INSERT INTO login_attempts (ip, t) VALUES (?, ?)").bind(ip, now).run();
+        return json({ ok: false }, 401);
+      }
+      return json({ ok: true, token: await makeToken(env) });
+    }
+
+    if (p.startsWith("/api/admin/")) {
+      if (!(await isAdmin(req, env))) return json({ error: "no" }, 401);
+
+      if (req.method === "PUT" && p.startsWith("/api/admin/chunk/")) {
+        const [id, nStr] = p.slice(17).split("/");
+        const n = Number(nStr);
+        if (!ID_OK.test(id || "") || !Number.isInteger(n) || n < 0 || n > 200) return json({ error: "bad" }, 400);
+        const data = await req.text();
+        if (!data || data.length > 1500000) return json({ error: "bad size" }, 400);
+        await env.DB.prepare("INSERT OR REPLACE INTO chunks (app_id, n, data) VALUES (?, ?, ?)").bind(id, n, data).run();
+        return json({ ok: true });
+      }
+
+      if (req.method === "POST" && p === "/api/admin/finish") {
+        let b; try { b = await req.json(); } catch { return json({}, 400); }
+        const id = String(b.id || "");
+        const name = String(b.name || "").trim().slice(0, 80);
+        const desc = String(b.desc || "").trim().slice(0, 200);
+        const file = String(b.file || "").trim().slice(0, 120);
+        const size = Number(b.size) || 0;
+        if (!ID_OK.test(id) || !name || !file) return json({ error: "bad" }, 400);
+        const c = await env.DB.prepare("SELECT COUNT(*) AS n FROM chunks WHERE app_id = ?").bind(id).first();
+        if (!c.n) return json({ error: "no data" }, 400);
+        await env.DB.prepare("INSERT INTO apps (id, name, desc, file, size, created_at) VALUES (?, ?, ?, ?, ?, ?)")
+          .bind(id, name, desc, file, size, Date.now()).run();
+        return json({ ok: true });
+      }
+
+      if (req.method === "GET" && p === "/api/admin/messages") {
+        const { results } = await env.DB.prepare("SELECT id, kind, text, contact, created_at FROM messages ORDER BY created_at DESC LIMIT 200").all();
+        return json(results);
+      }
+
+      if (req.method === "DELETE" && p.startsWith("/api/admin/message/")) {
+        await env.DB.prepare("DELETE FROM messages WHERE id = ?").bind(Number(p.slice(19))).run();
+        return json({ ok: true });
+      }
+
+      if (req.method === "DELETE" && p.startsWith("/api/admin/app/")) {
+        const id = decodeURIComponent(p.slice(15));
+        await env.DB.prepare("DELETE FROM chunks WHERE app_id = ?").bind(id).run();
+        await env.DB.prepare("DELETE FROM apps WHERE id = ?").bind(id).run();
+        return json({ ok: true });
+      }
+    }
+
+    return new Response("Not found", { status: 404 });
   }
-  var url=URL.createObjectURL(new Blob(parts)),l=document.createElement("a");
-  l.href=url;l.download=a.file;document.body.appendChild(l);l.click();l.remove();
-  setTimeout(function(){URL.revokeObjectURL(url)},5000);
-  btn.textContent="Download";
- }catch(e){btn.textContent="Failed, retry"}
- btn.disabled=false;
-}
-
-function loadInbox(){
- call("GET","/api/admin/messages").then(function(r){return r.ok?r.json():[]}).then(function(m){
-  var h="";
-  m.forEach(function(x){
-   h+='<div class="msgi"><b>'+(x.kind==="request"?"App request":"Question")+'</b><div class="meta">'+new Date(x.created_at).toLocaleString()+(x.contact?" &middot; "+esc(x.contact):"")+'</div>'+esc(x.text)
-    +'<div style="margin-top:6px"><button class="btn red" data-m="'+x.id+'">Delete</button></div></div>';
-  });
-  var l=document.getElementById("inboxlist");
-  l.innerHTML=h||'<div class="meta">No messages yet.</div>';
-  Array.prototype.forEach.call(l.querySelectorAll("[data-m]"),function(b){
-   b.onclick=function(){call("DELETE","/api/admin/message/"+b.dataset.m).then(loadInbox)};
-  });
- });
-}
-document.getElementById("qsend").onclick=function(){
- var t=document.getElementById("qtext").value.trim(),q=document.getElementById("qmsg");
- if(!t){q.textContent="Type something first.";return}
- fetch("/api/message",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({
-  kind:document.getElementById("qkind").value,text:t,contact:document.getElementById("qcontact").value.trim()})})
- .then(function(r){
-  if(r.ok){q.textContent="Sent! The admin will see it.";document.getElementById("qtext").value="";}
-  else q.textContent=r.status===429?"Too many messages, try again in a few minutes.":"Couldn't send.";
- }).catch(function(){q.textContent="Couldn't send."});
 };
-function call(method,url,body,headers){
- headers=headers||{}; if(token)headers["Authorization"]="Bearer "+token;
- return fetch(url,{method:method,body:body,headers:headers}).then(function(r){
-  if(r.status===401){token="";sessionStorage.removeItem("ui_tok");render();}
-  return r;
- });
-}
-function load(){ fetch("/api/apps").then(function(r){return r.json()}).then(function(d){apps=d;render();}); }
-document.getElementById("search").oninput=render;
-
-var names=Object.keys(ICONS).sort(function(){return Math.random()-.5});
-var lg=document.getElementById("logos");
-names.forEach(function(n){
- var b=document.createElement("button");b.setAttribute("aria-label","logo");
- b.innerHTML='<svg viewBox="0 0 24 24">'+ICONS[n]+'</svg>';
- b.onclick=function(){click(n)};
- lg.appendChild(b);
-});
-
-var seq=[],timer=null;
-function click(n){
- seq.push(n); clearTimeout(timer);
- if(seq.length>12)seq=[];
- timer=setTimeout(function(){
-  var s=seq.slice();seq=[];
-  fetch("/api/unlock",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({seq:s})})
-   .then(function(r){
-    if(r.status>=500){alert("Server error ("+r.status+"). Check the secrets and the database tables.");return null}
-    if(r.status===429){alert("Too many wrong tries. Wait 10 minutes.");return null}
-    return r.ok?r.json():null;
-   }).then(function(d){
-    if(d&&d.token){token=d.token;sessionStorage.setItem("ui_tok",token);render();document.getElementById("admin").scrollTop=0;}
-   }).catch(function(){alert("Couldn't reach the server.")});
- },1500);
-}
-
-document.getElementById("aout").onclick=function(){token="";sessionStorage.removeItem("ui_tok");render();};
-document.getElementById("aup").onclick=async function(){
- var f=document.getElementById("afile").files[0],name=document.getElementById("aname").value.trim(),msg=document.getElementById("msg");
- var btn=document.getElementById("aup");
- if(!f||!name){msg.textContent="Pick a file and give it a name.";return;}
- if(f.size>MAXSIZE){msg.textContent="File too big (max 40 MB).";return;}
- btn.disabled=true;
- var id=Date.now().toString(36)+Math.random().toString(36).slice(2,8);
- var total=Math.max(1,Math.ceil(f.size/CHUNK));
- try{
-  for(var i=0;i<total;i++){
-   msg.textContent="Uploading "+Math.round(i/total*100)+"%...";
-   var buf=await f.slice(i*CHUNK,(i+1)*CHUNK).arrayBuffer();
-   var r=await call("PUT","/api/admin/chunk/"+id+"/"+i,b64(buf),{"Content-Type":"text/plain"});
-   if(!r.ok)throw new Error("chunk "+r.status);
-  }
-  var r2=await call("POST","/api/admin/finish",JSON.stringify({id:id,name:name,desc:document.getElementById("adesc").value.trim(),file:f.name,size:f.size}),{"Content-Type":"application/json"});
-  if(!r2.ok)throw new Error("finish "+r2.status);
-  msg.textContent="Added.";
-  document.getElementById("afile").value="";document.getElementById("aname").value="";document.getElementById("adesc").value="";
-  load();
- }catch(e){msg.textContent="Upload failed ("+e.message+"). Try again."}
- btn.disabled=false;
-};
-load();
