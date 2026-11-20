@@ -8,7 +8,7 @@ directory = "./public"
 [[d1_databases]]
 binding = "DB"
 database_name = "unblocked-installer"
-database_id = "PASTE-YOUR-D1-DATABASE-ID-HERE"
+database_id = "f1090336-4dd7-4fe3-bd85-0c2aa8e5adc9"
 
 [[r2_buckets]]
 binding = "APPS"
