@@ -2,6 +2,7 @@ const LOGOS = ["circle", "triangle", "square", "star", "hex", "diamond", "cross"
 
 const enc = new TextEncoder();
 const json = (o, s = 200) => new Response(JSON.stringify(o), { status: s, headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } });
+const ID_OK = /^[a-z0-9-]{8,40}$/;
 
 async function hmac(secret, msg) {
   const key = await crypto.subtle.importKey("raw", enc.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
@@ -32,23 +33,20 @@ export default {
     const p = url.pathname;
 
     if (req.method === "GET" && p === "/api/apps") {
-      const { results } = await env.DB.prepare("SELECT id, name, desc, file, size, created_at AS t FROM apps ORDER BY created_at DESC").all();
+      const { results } = await env.DB.prepare(
+        "SELECT id, name, desc, file, size, created_at AS t, (SELECT COUNT(*) FROM chunks WHERE app_id = apps.id) AS chunks FROM apps ORDER BY created_at DESC"
+      ).all();
       return json(results);
     }
 
-    if (req.method === "GET" && p.startsWith("/download/")) {
-      const id = decodeURIComponent(p.slice(10));
-      const row = await env.DB.prepare("SELECT file FROM apps WHERE id = ?").bind(id).first();
-      const obj = row && await env.APPS.get("apps/" + id);
-      if (!obj) return new Response("Not found", { status: 404 });
-      await env.DB.prepare("UPDATE apps SET downloads = downloads + 1 WHERE id = ?").bind(id).run();
-      const fname = (row.file || "download").replace(/[^\w.\- ]/g, "_");
-      return new Response(obj.body, { headers: {
-        "Content-Type": "application/octet-stream",
-        "Content-Disposition": 'attachment; filename="' + fname + '"',
-        "Content-Length": String(obj.size),
-        "X-Content-Type-Options": "nosniff"
-      } });
+    if (req.method === "GET" && p.startsWith("/api/chunk/")) {
+      const [id, nStr] = p.slice(11).split("/");
+      const n = Number(nStr);
+      if (!ID_OK.test(id || "") || !Number.isInteger(n) || n < 0) return new Response("bad", { status: 400 });
+      const row = await env.DB.prepare("SELECT data FROM chunks WHERE app_id = ? AND n = ?").bind(id, n).first();
+      if (!row) return new Response("Not found", { status: 404 });
+      if (n === 0) await env.DB.prepare("UPDATE apps SET downloads = downloads + 1 WHERE id = ?").bind(id).run();
+      return new Response(row.data, { headers: { "Content-Type": "text/plain", "Cache-Control": "no-store" } });
     }
 
     if (req.method === "POST" && p === "/api/message") {
@@ -85,15 +83,29 @@ export default {
     if (p.startsWith("/api/admin/")) {
       if (!(await isAdmin(req, env))) return json({ error: "no" }, 401);
 
-      if (req.method === "PUT" && p === "/api/admin/upload") {
-        const dec = h => { try { return decodeURIComponent(req.headers.get(h) || ""); } catch { return ""; } };
-        const name = dec("x-name").slice(0, 80), desc = dec("x-desc").slice(0, 200), file = dec("x-filename").slice(0, 120);
-        if (!name || !file || !req.body) return json({ error: "bad" }, 400);
-        const id = Date.now().toString(36) + "-" + file.toLowerCase().replace(/[^a-z0-9.]+/g, "-").slice(0, 60);
-        const obj = await env.APPS.put("apps/" + id, req.body);
+      if (req.method === "PUT" && p.startsWith("/api/admin/chunk/")) {
+        const [id, nStr] = p.slice(17).split("/");
+        const n = Number(nStr);
+        if (!ID_OK.test(id || "") || !Number.isInteger(n) || n < 0 || n > 200) return json({ error: "bad" }, 400);
+        const data = await req.text();
+        if (!data || data.length > 1500000) return json({ error: "bad size" }, 400);
+        await env.DB.prepare("INSERT OR REPLACE INTO chunks (app_id, n, data) VALUES (?, ?, ?)").bind(id, n, data).run();
+        return json({ ok: true });
+      }
+
+      if (req.method === "POST" && p === "/api/admin/finish") {
+        let b; try { b = await req.json(); } catch { return json({}, 400); }
+        const id = String(b.id || "");
+        const name = String(b.name || "").trim().slice(0, 80);
+        const desc = String(b.desc || "").trim().slice(0, 200);
+        const file = String(b.file || "").trim().slice(0, 120);
+        const size = Number(b.size) || 0;
+        if (!ID_OK.test(id) || !name || !file) return json({ error: "bad" }, 400);
+        const c = await env.DB.prepare("SELECT COUNT(*) AS n FROM chunks WHERE app_id = ?").bind(id).first();
+        if (!c.n) return json({ error: "no data" }, 400);
         await env.DB.prepare("INSERT INTO apps (id, name, desc, file, size, created_at) VALUES (?, ?, ?, ?, ?, ?)")
-          .bind(id, name, desc, file, obj.size, Date.now()).run();
-        return json({ ok: true, id });
+          .bind(id, name, desc, file, size, Date.now()).run();
+        return json({ ok: true });
       }
 
       if (req.method === "GET" && p === "/api/admin/messages") {
@@ -108,7 +120,7 @@ export default {
 
       if (req.method === "DELETE" && p.startsWith("/api/admin/app/")) {
         const id = decodeURIComponent(p.slice(15));
-        await env.APPS.delete("apps/" + id);
+        await env.DB.prepare("DELETE FROM chunks WHERE app_id = ?").bind(id).run();
         await env.DB.prepare("DELETE FROM apps WHERE id = ?").bind(id).run();
         return json({ ok: true });
       }
