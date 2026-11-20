@@ -2,6 +2,7 @@
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>The Unblocked Installer</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='%235df0b0'/%3E%3Cstop offset='1' stop-color='%231fb36f'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='64' height='64' rx='14' fill='url(%23g)'/%3E%3Cpath d='M32 12v24' stroke='%23fff' stroke-width='7' stroke-linecap='round'/%3E%3Cpath d='M20 26l12 12 12-12' fill='none' stroke='%23fff' stroke-width='7' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M16 46h32' stroke='%23fff' stroke-width='7' stroke-linecap='round'/%3E%3C/svg%3E">
 <style>
 :root{--bg:#0d1117;--card:#161b22;--line:#262d38;--text:#e6edf3;--mute:#8b949e;--acc:#3ddc97}
 *{box-sizing:border-box}
@@ -24,7 +25,6 @@ main{flex:1;width:100%;max-width:960px;margin:0 auto;padding:12px 20px 40px}
 .empty{color:var(--mute);text-align:center;padding:40px 0}
 .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 
-/* full-page admin */
 #admin{display:none;position:fixed;inset:0;z-index:100;background:var(--bg);overflow:auto}
 #admin .bar{position:sticky;top:0;background:var(--card);border-bottom:1px solid var(--acc);padding:14px 20px;display:flex;justify-content:space-between;align-items:center;z-index:2}
 #admin .bar h2{margin:0;font-size:20px;color:var(--acc)}
@@ -47,17 +47,16 @@ main{flex:1;width:100%;max-width:960px;margin:0 auto;padding:12px 20px 40px}
 .ask select,.ask textarea,.ask input{width:100%;padding:10px;margin-bottom:8px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--text);font:inherit}
 .ask textarea{min-height:90px;resize:vertical}
 footer{border-top:1px solid var(--line);padding:22px 20px 30px;text-align:center;color:var(--mute);font-size:13px}
-#logos{display:flex;justify-content:center;gap:18px;margin-top:14px;flex-wrap:wrap}
-#logos button{background:none;border:0;padding:6px;cursor:pointer;opacity:.55;transition:opacity .15s,transform .1s;-webkit-tap-highlight-color:transparent}
-#logos button:hover{opacity:.9}
-#logos button:active{transform:scale(.88)}
-#logos svg{width:26px;height:26px;fill:var(--mute)}
+#logo{background:none;border:0;padding:6px;margin-top:12px;cursor:pointer;opacity:.75;transition:opacity .15s,transform .1s;-webkit-tap-highlight-color:transparent}
+#logo:hover{opacity:1}
+#logo:active{transform:scale(.92)}
+#logo svg{width:40px;height:40px;display:block}
 </style></head><body>
 
 <div id="admin">
   <div class="bar">
     <h2>Admin</h2>
-    <button class="btn ghost" id="aout">Lock admin</button>
+    <button class="btn ghost" id="aout">Close admin</button>
   </div>
   <div class="wrap">
     <section class="panel">
@@ -98,19 +97,17 @@ footer{border-top:1px solid var(--line);padding:22px 20px 30px;text-align:center
 </main>
 <footer>
   <div>&copy; The Unblocked Installer</div>
-  <div id="logos"></div>
+  <button id="logo" aria-label="logo">
+    <svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+      <defs><linearGradient id="lg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#5df0b0"/><stop offset="1" stop-color="#1fb36f"/></linearGradient></defs>
+      <rect width="64" height="64" rx="14" fill="url(#lg)"/>
+      <path d="M32 12v24" stroke="#fff" stroke-width="7" stroke-linecap="round"/>
+      <path d="M20 26l12 12 12-12" fill="none" stroke="#fff" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M16 46h32" stroke="#fff" stroke-width="7" stroke-linecap="round"/>
+    </svg>
+  </button>
 </footer>
 <script>
-var ICONS={
- circle:'<circle cx="12" cy="12" r="9"/>',
- triangle:'<path d="M12 3 22 21H2z"/>',
- square:'<rect x="4" y="4" width="16" height="16" rx="2"/>',
- star:'<path d="m12 2 3 7 7 .6-5.3 4.8 1.6 7.2L12 17.8 5.7 21.6l1.6-7.2L2 9.6 9 9z"/>',
- hex:'<path d="M12 2 21 7v10l-9 5-9-5V7z"/>',
- diamond:'<path d="M12 2 22 12 12 22 2 12z"/>',
- cross:'<path d="M9 2h6v7h7v6h-7v7H9v-7H2V9h7z"/>',
- moon:'<path d="M20 14.5A8.5 8.5 0 0 1 9.5 4 9 9 0 1 0 20 14.5z"/>'
-};
 var apps=[],token=sessionStorage.getItem("ui_tok")||"";
 var CHUNK=700*1024, MAXSIZE=40*1024*1024;
 function esc(s){return String(s).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]})}
@@ -128,7 +125,6 @@ function render(){
   b.onclick=function(){var a=apps.find(function(x){return x.id===b.dataset.dl});if(a)download(a,b)};
  });
 
- // admin full page
  var open=!!token;
  document.getElementById("admin").style.display=open?"block":"none";
  document.body.classList.toggle("locked",open);
@@ -202,27 +198,19 @@ function call(method,url,body,headers){
 function load(){ fetch("/api/apps").then(function(r){return r.json()}).then(function(d){apps=d;render();}); }
 document.getElementById("search").oninput=render;
 
-var names=Object.keys(ICONS).sort(function(){return Math.random()-.5});
-var lg=document.getElementById("logos");
-names.forEach(function(n){
- var b=document.createElement("button");b.setAttribute("aria-label","logo");
- b.innerHTML='<svg viewBox="0 0 24 24">'+ICONS[n]+'</svg>';
- b.onclick=function(){click(n)};
- lg.appendChild(b);
-});
-var seq=[],timer=null;
-function click(n){
- seq.push(n); clearTimeout(timer);
- if(seq.length>12)seq=[];
- timer=setTimeout(function(){
-  var s=seq.slice();seq=[];
-  if(s.length<2)return;
-  fetch("/api/unlock",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({seq:s})})
-   .then(function(r){return r.ok?r.json():null}).then(function(d){
-    if(d&&d.token){token=d.token;sessionStorage.setItem("ui_tok",token);render();document.getElementById("admin").scrollTop=0;}
-   });
- },1500);
+// click the logo at the bottom to open admin
+async function openAdmin(pw){
+ try{
+  var r=await fetch("/api/unlock",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({pw:pw||""})});
+  if(r.status===401){var p=prompt("Admin password:");if(p===null)return;return openAdmin(p);}
+  if(r.status===429){alert("Too many wrong tries. Wait 10 minutes.");return;}
+  if(!r.ok){alert("Server error ("+r.status+"). Check the D1 database is connected (binding name DB) and the tables exist.");return;}
+  var d=await r.json();
+  token=d.token;sessionStorage.setItem("ui_tok",token);
+  render();document.getElementById("admin").scrollTop=0;
+ }catch(e){alert("Couldn't reach the server.")}
 }
+document.getElementById("logo").onclick=function(){openAdmin("")};
 
 document.getElementById("aout").onclick=function(){token="";sessionStorage.removeItem("ui_tok");render();};
 document.getElementById("aup").onclick=async function(){
